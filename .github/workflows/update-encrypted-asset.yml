@@ -3,7 +3,7 @@ name: Update encrypted asset
 on:
   push:
     paths:
-       - '.github/workflows/lst_rdo.json'
+      - '.github/workflows/lst_rdo.json'
 
 jobs:
   build:
@@ -12,18 +12,20 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Dart
-        uses: dart-lang/setup-dart@v1
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'   # <-- version que tu utilises localement
 
       - name: Install dependencies
-        run: dart pub add encrypt
+        run: flutter pub get
 
       - name: Generate encrypted asset
-        run: dart run tool/encrypt_json.dart
+        run: flutter run tool/encrypt_json.dart
 
       - name: Commit & push if changed
         run: |
           git config user.name "github-actions[bot]"
-          git config user.name "github-actions[bot]@users.noreply.github.com"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add assets/lst_rdo.aes
           git diff --cached --quiet || (git commit -m "chore: auto-update encrypted asset" && git push)
