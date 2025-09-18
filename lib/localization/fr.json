@@ -1,9 +1,0 @@
-{
-  "app_title": "Radio en direct",
-  "select_country": "Sélectionnez un pays",
-  "no_radios_found": "Aucune radio trouvée",
-  "loading": "Chargement...",
-  "error_loading_data": "Erreur lors du chargement des données",
-  "return": "Retour",
-  "search_station": "Rechercher une station"
-}

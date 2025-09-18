@@ -1,9 +1,0 @@
-{
-  "app_title": "Radio en vivo",
-  "select_country": "Selecciona un país",
-  "no_radios_found": "No se encontraron radios",
-  "loading": "Cargando...",
-  "error_loading_data": "Error al cargar los datos",
-  "return": "Volver",
-  "search_station": "Buscar estación"
-}
