@@ -17,7 +17,7 @@ void main() {
 
   ///********* */
 
-  final plain = File('lst_rdo.json').readAsBytesSync();
+  final plain = File('.github/workflows/lst_rdo.json').readAsBytesSync();
   // clé 32 bytes – stockée nulle part dans le repo
   final key = Key.fromUtf8('MyVeryLong32BytesSecretKey123456'); // 32 car
   final iv  = IV.fromSecureRandom(12);                           // GCM 96 bits
