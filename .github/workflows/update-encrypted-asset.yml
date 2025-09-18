@@ -3,7 +3,7 @@ name: Update encrypted asset
 on:
   push:
     paths:
-      - 'lst_rdo.json'
+       - '.github/workflows/lst_rdo.json'
 
 jobs:
   build:
