@@ -1,0 +1,9 @@
+{
+  "app_title": "الراديو المباشر",
+  "select_country": "اختر دولة",
+  "no_radios_found": "لم يتم العثور على إذاعات",
+  "loading": "جار التحميل...",
+  "error_loading_data": "خطأ في تحميل البيانات",
+   "return": "رجوع",
+   "search_station": "ابحث عن محطة"
+}

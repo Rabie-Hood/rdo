@@ -1,0 +1,9 @@
+{
+  "app_title": "Radio Live",
+  "select_country": "Select a country",
+  "no_radios_found": "No radios found",
+  "loading": "Loading...",
+  "error_loading_data": "Error loading data",
+  "return": "Return",
+  "search_station": "Search station"
+}

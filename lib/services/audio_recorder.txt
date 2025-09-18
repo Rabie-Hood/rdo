@@ -1,0 +1,114 @@
+// lib/services/audio_recorder.dart
+import 'dart:io';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:http/http.dart' as http;
+
+/// Enregistreur « one-shot » :
+/// - Android : encodage AAC dans un .m4a
+/// - iOS/macOS : encodage AAC dans un .m4a
+/// - Windows/Linux : PCM 16 bits 44,1 kHz dans un .wav
+/// - Web : non supporté (renvoie une erreur)
+class AudioRecorder {
+  AudioPlayer? _internalPlayer;
+  String? _outputPath;
+  bool _isRecording = false;
+
+  /* --------- téléchargement --------- */
+  http.Client? _httpClient;
+  StreamSubscription<List<int>>? _sub;
+
+  bool get isRecording => _isRecording;
+
+  /// Démarre l'enregistrement.
+  /// [path] est facultatif : si absent un nom automatique est généré.
+  /// Renvoie le chemin réel du fichier créé.
+  Future<String> start({String? path, Map<String, dynamic>? config}) async {
+    if (_isRecording) throw Exception('Enregistrement déjà actif');
+
+    final dir = await getApplicationDocumentsDirectory();
+    final recordDir = Directory('${dir.path}/Live_Radio');
+    if (!await recordDir.exists()) await recordDir.create(recursive: true);
+
+    final now = DateTime.now();
+    final ext = _extensionForPlatform();
+    final fileName = path ??
+        'radio_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_'
+            '${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}$ext';
+    _outputPath = '${recordDir.path}/$fileName';
+
+    /* ----------- SI URL FOURNIE : on copie le flux sans bloquer ----------- */
+    final url = config?['input'] as String?;
+    if (url != null) {
+      _httpClient = http.Client();
+      final request = http.Request('GET', Uri.parse(url));
+
+      // 🔥 NE PAS await ici sinon on bloque le thread UI
+      _httpClient!.send(request).then((response) async {
+        final sink = File(_outputPath!).openWrite();
+        _isRecording = true;
+
+        _sub = response.stream.listen(
+          (chunk) => sink.add(chunk),
+          onDone: () async {
+            await sink.flush();
+            await sink.close();
+            _cleanUp();
+          },
+          onError: (_) async {
+            await sink.flush();
+            await sink.close();
+            _cleanUp();
+          },
+        );
+      }).catchError((_) {
+        _cleanUp();
+      });
+
+      return _outputPath!; // 🔥 on retourne tout de suite
+    }
+
+    /* ----------- ancien comportement si pas d'URL ----------- */
+    _internalPlayer = AudioPlayer();
+    await _internalPlayer!.setAudioSource(AudioSource.uri(Uri.file(_outputPath!)));
+    final file = File(_outputPath!);
+    await file.create(recursive: true);
+    _isRecording = true;
+    return _outputPath!;
+  }
+
+  /// Arrête l'enregistrement et renvoie le chemin du fichier.
+  Future<String?> stop() async {
+    if (!_isRecording) return null;
+
+    await _sub?.cancel();
+    _httpClient?.close();
+    _sub = null;
+    _httpClient = null;
+
+    await _internalPlayer?.dispose();
+    _internalPlayer = null;
+
+    _isRecording = false;
+    final path = _outputPath;
+    _outputPath = null;
+    return path;
+  }
+
+  void _cleanUp() {
+    _isRecording = false;
+    _sub?.cancel();
+    _httpClient?.close();
+    _sub = null;
+    _httpClient = null;
+  }
+
+  String _extensionForPlatform() {
+    if (kIsWeb) throw UnsupportedError('Web non supporté');
+    if (Platform.isIOS || Platform.isMacOS) return '.m4a';
+    if (Platform.isAndroid) return '.m4a';
+    return '.wav'; // Windows / Linux
+  }
+}
