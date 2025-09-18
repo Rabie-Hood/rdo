@@ -54,6 +54,8 @@ flutter:
     - lib/localization/ar.json
     - assets/countries.json
     - assets/default_logo.png
+    - assets/flags/unknown.png
+    - assets/no_logo_radio.png
     - assets/lst_rdo.aes
 
   fonts:

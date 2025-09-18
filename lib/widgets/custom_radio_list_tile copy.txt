@@ -25,18 +25,11 @@ class CustomRadioListTile extends StatelessWidget {
     return ListTile(
       onTap: isOffline ? null : onTap, // désactive le tap si morte
       leading: CircleAvatar(
-        radius: 20,
-        backgroundColor: Colors.grey[300],
         backgroundImage: radio.logoUrl != null && radio.logoUrl!.isNotEmpty
-            ? NetworkImage(radio.logoUrl!)
-            : const AssetImage('assets/no_logo_radio.png') as ImageProvider,
-        onBackgroundImageError: (exception, stackTrace) {
-          // Si le NetworkImage échoue, on force le fallback
-          if (radio.logoUrl != null && radio.logoUrl!.isNotEmpty) {
-            // On reboucle avec l'asset local
-            // (on ne peut pas changer backgroundImage directement, donc on utilise un ImageProvider local)
-          }
-        },
+              ? NetworkImage(radio.logoUrl!)
+              : const AssetImage('assets/default_logo.png') as ImageProvider,
+        backgroundColor: Colors.grey[300],
+        radius: 20,
       ),
       title: Text(
         radio.name,

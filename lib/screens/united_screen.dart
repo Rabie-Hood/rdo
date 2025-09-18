@@ -1,4 +1,10 @@
 // lib/screens/united_screen.dart
+// REMARQUES (inchangées) :
+// 1. Clé obfusquée 32 caractères exacts
+// 2. Télécharge le dernier AES depuis GitHub
+// 3. Lit le blob (local ou asset) → déchiffre
+// -------------------------------------------------
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -84,7 +90,8 @@ class _UnScreenState extends State<UnScreen> {
 
   /* --------------------  STATIONS  -------------------- */
   final RadioService _service = RadioService();
-  List<RadioStation> _stations = [];
+  List<RadioStation> _stations = [];       // ← filtrées à l’affichage
+  List<RadioStation> _allStations = [];    // ← cache global (chargé 1 fois)
   bool _loading = false;
 
   /* --------------------  AUDIO  -------------------- */
@@ -102,20 +109,26 @@ class _UnScreenState extends State<UnScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCountries().then((_) => _selectSystemCountry());
+    // ✅ 1) Pays + 2) Stations une seule fois → 3) Pays système
+    _loadCountries().then((_) async {
+      await _loadAllStations(); // ← déchiffre 1 seule fois
+      _selectSystemCountry();   // ← filtre rapide
+    });
     _loadFavs();
     _player.playingStream.listen((playing) {
       if (mounted) setState(() => _isPlaying = playing);
     });
 
-    /* 🔒 Enregistrement tâche périodique (6 h) – existingWorkPolicy pour remplacer l’ancienne */
-    Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
-    Workmanager().registerPeriodicTask(
-      'updateAES',
-      'updateAES',
-      frequency: const Duration(hours: 6),
-      existingWorkPolicy: ExistingWorkPolicy.replace,
-    );
+    /* 🔒 Tâche de fond – desktop exclu */
+    if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) {
+      Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+      Workmanager().registerPeriodicTask(
+        'updateAES',
+        'updateAES',
+        frequency: const Duration(hours: 6),
+        existingWorkPolicy: ExistingWorkPolicy.replace,
+      );
+    }
   }
 
   @override
@@ -144,7 +157,7 @@ class _UnScreenState extends State<UnScreen> {
         _selectedCountry = target['name'];
         _selectedCountryCode = target['code'];
       });
-      _loadStations();
+      _loadStations(); // ← filtre rapide depuis le cache
     }
   }
 
@@ -166,51 +179,53 @@ class _UnScreenState extends State<UnScreen> {
   }
 
   /* ========================================================= */
-  /*                     STATIONS                              */
+  /*              CHARGEMENT UNIQUE DES STATIONS               */
+  /* ========================================================= */
+  Future<void> _loadAllStations() async {
+    if (_allStations.isNotEmpty) return; // déjà en mémoire
+    try {
+      final jsonStr = await EncryptedAssetLoader.decryptJson(); // 1 seul déchiffrement
+      final data  = jsonDecode(jsonStr) as List;
+      _allStations = data.map((e) => RadioStation.fromJson(e)).toList();
+    } catch (_) {
+      _allStations = [];
+    }
+  }
+
+  /* ========================================================= */
+  /*                     FILTRAGE RAPIDE                       */
   /* ========================================================= */
   Future<void> _loadStations() async {
     if (_selectedCountryCode == null) return;
     setState(() => _loading = true);
-    try {
-      final list = await _service.fetchRadiosByCountry(_selectedCountryCode!);
-      final seen = <String>{};
-      final dedup = list.where((s) => seen.add(s.name.trim().toLowerCase())).toList();
-      setState(() => _stations = dedup);
-    } catch (_) {
-      setState(() => _stations = []);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erreur de chargement des stations')),
-      );
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-    //***
-    debugPrint('>>> _selectedCountryCode = $_selectedCountryCode');
-    //***
+
+    // ✅ Filtre ultra-rapide depuis le cache mémoire
+    final countryCode = _selectedCountryCode!.toUpperCase();
+    final dedup = _allStations.where((s) {
+      final code = (s.code ?? '').trim().toUpperCase();
+      return code == countryCode;
+    }).toList();
+
+    setState(() {
+      _stations = dedup;
+      _loading = false;
+    });
   }
 
   /* ========================================================= */
   /*                   LECTURE  RADIO                          */
   /* ========================================================= */
   Future<void> _play(RadioStation st) async {
-    // 0. Coupe l'ancien flux avant tout (évite double lecture)
-    await _player.stop();
+    await _player.stop(); // coupe l’ancien flux
 
-    // 1. Même station : on toggle play/pause
-    if (_current == st && _isPlaying) {
+    if (_current == st && _isPlaying) { // même station → pause
       await _player.pause();
       return;
     }
     
-    // 2. Nouvelle station (ou pas en cours) : on charge et on joue
     await _player.setAudioSource(AudioSource.uri(Uri.parse(st.url)));
-
-    // On met la station courante AVANT de jouer pour que L1 s’affiche tout de suite
-    setState(() {
-      _current = st;
-    });
-
-    await _player.play(); // démarre la lecture (déclenche playingStream)
+    setState(() => _current = st);
+    await _player.play();
   }
 
   void _toggleFav(RadioStation st) {
@@ -223,13 +238,10 @@ class _UnScreenState extends State<UnScreen> {
   /* ========================================================= */
   /*         ENREGISTREMENT LOOP-BACK CARTE SON                */
   /* ========================================================= */
-  final AudioRecorder _audioRecorder = AudioRecorder(); // notre classe
+  final AudioRecorder _audioRecorder = AudioRecorder();
 
   Future<void> _toggleRecord() async {
-    debugPrint('>>> _toggleRecord début - _current = $_current - _isRecording = $_isRecording');
-
     if (_current == null) {
-      debugPrint('>>> _current null → on sort');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Aucune station sélectionnée')),
       );
@@ -237,21 +249,16 @@ class _UnScreenState extends State<UnScreen> {
     }
 
     if (_isRecording) {
-      debugPrint('>>> on STOPPE l’enregistrement');
       final path = await _audioRecorder.stop();
-      debugPrint('>>> stop terminé, path = $path');
-
       setState(() => _isRecording = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Enregistrement terminé :\n$path') ),
+        SnackBar(content: Text('Enregistrement terminé :\n$path')),
       );
       return;
     }
 
-    debugPrint('>>> on DÉMARRE l’enregistrement');
     try {
       final path = await _audioRecorder.start(config: {'input': _current!.url});
-      debugPrint('>>> start terminé, path = $path');
       setState(() {
         _isRecording = true;
         _recordPath = path;
@@ -260,7 +267,6 @@ class _UnScreenState extends State<UnScreen> {
         SnackBar(content: Text('Enregistrement du flux…\n$path')),
       );
     } catch (e) {
-      debugPrint('>>> ERREUR start : $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erreur : $e')),
       );
@@ -293,7 +299,7 @@ class _UnScreenState extends State<UnScreen> {
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: const Text('Live World Radio'),
-        leading: const BtmQuit(),   // ← notre bouton
+        leading: const BtmQuit(),
       ),
       body: Padding(
         padding: const EdgeInsets.all(4.0),
@@ -311,7 +317,7 @@ class _UnScreenState extends State<UnScreen> {
                 width: MediaQuery.of(context).size.width * 0.30,
                 child: Column(
                   children: [
-                    _countryDropdownOnly(), // ← unique dropdown
+                    _countryDropdownOnly(),
                     const SizedBox(height: 8),
                     Expanded(child: _stationList()),
                   ],
@@ -365,11 +371,12 @@ class _UnScreenState extends State<UnScreen> {
                 child: Row(
                   children: [
                     Image.network(
-                      c['flag']!,
+                      c['flag']!.trim(),
                       width: 24,
                       height: 16,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.flag, size: 16),
+                      errorBuilder: (_, __, ___) =>
+                          Image.asset('assets/flags/unknown.png', width: 24, height: 16, fit: BoxFit.cover),
                     ),
                     const SizedBox(width: 8),
                     Text(c['name']!),
@@ -383,7 +390,7 @@ class _UnScreenState extends State<UnScreen> {
                 _selectedCountry = val['name'];
                 _selectedCountryCode = val['code'];
               });
-              _loadStations();
+              _loadStations(); // ← filtre rapide
             },
           ),
         ),
@@ -400,8 +407,8 @@ class _UnScreenState extends State<UnScreen> {
     if (_stations.isEmpty) {
       return const Center(child: Text('Aucune station en ligne'));
     }
-    return ListView.separated(                           // ← plus souple
-      padding: const EdgeInsets.symmetric(horizontal: 4), // ← réduit
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       itemCount: _stations.length,
       separatorBuilder: (_, __) => const SizedBox(height: 2),
       itemBuilder: (_, i) {
@@ -447,7 +454,7 @@ class _UnScreenState extends State<UnScreen> {
         decoration: BoxDecoration(
             color: Colors.grey[100],
             borderRadius: BorderRadius.circular(8)),
-        child: Scrollbar(                           // ← défilement si besoin
+        child: Scrollbar(
           child: ListView(
             padding: const EdgeInsets.all(8),
             children: [
@@ -502,7 +509,7 @@ class _UnScreenState extends State<UnScreen> {
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
-    if (task == 'updateAES') await pullLatestEncryptedAsset();
+    if (task == 'updateAES') await EncryptedAssetLoader.pullLatestEncryptedAsset(); // ← classe
     return Future.value(true);
   });
 }

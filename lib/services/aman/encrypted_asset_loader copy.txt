@@ -1,0 +1,65 @@
+// lib/services/aman/encrypted_asset_loader.dart
+// REMARQUES (inchangées) :
+// 1. Clé obfusquée 32 caractères exacts
+// 2. Télécharge le dernier AES depuis GitHub
+// 3. Lit le blob (local ou asset) → déchiffre
+// -------------------------------------------------
+
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:encrypt/encrypt.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
+
+/* ==========================================
+   1.  Clé obfusquée (32 caractères exacts)
+   ========================================== */
+String _obfKey() {
+  final parts = ['MyVery', 'Long32', 'BytesSecret', 'Key123456'];
+  return parts.join(); // 32 bytes
+}
+
+/* ==========================================
+   2.  Télécharge le dernier AES depuis GitHub
+   ========================================== */
+Future<void> pullLatestEncryptedAsset() async {
+  // CORRECTION : espace final supprimé
+  const url = 'https://raw.githubusercontent.com/Rabie-Hood/rdo/main/assets/lst_rdo.aes';
+  try {
+    final resp = await http.get(Uri.parse(url));
+    if (resp.statusCode != 200) return;
+
+    final dir  = await getApplicationSupportDirectory();
+    final file = File(join(dir.path, 'lst_rdo.aes'));
+
+    await file.writeAsBytes(resp.bodyBytes, flush: true);
+  } catch (_) {}
+}
+
+/* ==========================================
+   3.  Lit le blob (local ou asset) → déchiffre
+   ========================================== */
+Future<List<int>> _loadEncrypted() async {
+  final dir  = await getApplicationSupportDirectory();
+  final file = File(join(dir.path, 'lst_rdo.aes'));
+
+  if (await file.exists()) return file.readAsBytes();
+
+  final blob = await rootBundle.load('assets/lst_rdo.aes');
+  return blob.buffer.asUint8List();
+}
+
+Future<String> decryptJson() async {
+  final data = await _loadEncrypted();
+  final iv     = IV(Uint8List.fromList(data.sublist(0, 12)));
+  final cipher = Encrypted(Uint8List.fromList(data.sublist(12))); // cipher+tag
+  final key    = Key.fromUtf8(_obfKey());
+  final enc    = Encrypter(AES(key, mode: AESMode.gcm));
+
+  // CORRECTION : utiliser decrypt (pas decryptBytes) pour que GCM vérifie le tag
+  final plain = enc.decrypt(cipher, iv: iv);
+  return plain; // déjà une String UTF-8
+}

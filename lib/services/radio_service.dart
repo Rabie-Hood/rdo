@@ -1,26 +1,33 @@
 // lib/services/radio_service.dart
+// REMARQUES (inchangées) :
+// 1. Clé obfusquée 32 caractères exacts
+// 2. Télécharge le dernier AES depuis GitHub
+// 3. Lit le blob (local ou asset) → déchiffre
+// -------------------------------------------------
+
 import 'dart:convert';
 import 'dart:developer' as dev; // ← pour debugPrint
 import 'package:radio_app/services/aman/encrypted_asset_loader.dart'; // decryptJson
 import '../models/radio_station.dart';
-import 'radio_sources.dart'; // gardé pour compatibilité
+import 'package:flutter/foundation.dart' show debugPrint;
 
 /// Facade sans vérification d'URL : TOUTES les stations sont considérées vivantes
 class RadioService {
-  final _manager = RadioSourceManager();
-
-  /* 1. Liste brute (depuis asset chiffré) */
+  /* 1. Liste brute (depuis asset chiffré LOCAL UNIQUEMENT) */
   Future<List<RadioStation>> fetchRadiosByCountry(String countryCode) async {
     try {
-      final jsonStr = await decryptJson();
+      final jsonStr = await EncryptedAssetLoader.decryptJson(); // ← avec classe
       final data = jsonDecode(jsonStr) as List;
       return data
           .map((e) => RadioStation.fromJson(e))
-          .where((s) => (s.code ?? '').toUpperCase() == countryCode.toUpperCase())
+          .where((s) {
+            final code = (s.code ?? '').trim().toUpperCase();
+            return code == countryCode.toUpperCase();
+            })
           .toList();
     } catch (e, s) {
-      dev.log('>>> fetchRadiosByCountry ERROR: $e\n$s'); // ← trace
-      rethrow; // pour que l’écran affiche le SnackBar
+      dev.log('>>> fetchRadiosByCountry ERROR: $e\n$s');
+      rethrow; // pour SnackBar
     }
   }
 

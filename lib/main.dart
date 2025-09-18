@@ -1,25 +1,56 @@
-import 'package:flutter/material.dart';
+// lib/main.dart
+// REMARQUES (inchangées) :
+// 1. Clé obfusquée 32 caractères exacts
+// 2. Télécharge le dernier AES depuis GitHub
+// 3. Lit le blob (local ou asset) → déchiffre
+// -------------------------------------------------
+
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:path_provider/path_provider.dart';   
-import 'dart:io';                                    
+import 'package:path_provider/path_provider.dart';
 
 import 'screens/united_screen.dart';
 import 'localization/app_localizations.dart';
-import 'services/aman/encrypted_asset_loader.dart';
+import 'services/aman/encrypted_asset_loader.dart'; // ← import unique
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized(); // ← required on desktop
 
   // Télécharge le blob chiffré le plus récent (sans bloquer le démarrage)
-  await pullLatestEncryptedAsset(); // ← ajout
+  await EncryptedAssetLoader.pullLatestEncryptedAsset(); // ← appel avec classe
 
+  //********************* */
+  final raw = await rootBundle.loadString('assets/countries.json');
+  final list = jsonDecode(raw) as List;
+  final fr = list.firstWhere((e) => e['code'] == 'FR');
+  print('>>> FR flag URL : "${fr['flag']}"');
+  print('>>> URL length : ${fr['flag'].length}');
+  //**** */
   final dir = await getApplicationSupportDirectory();
   final file = File('${dir.path}/lst_rdo.aes');
-  debugPrint('>>> AES file exists: ${file.existsSync()}');
-  debugPrint('>>> AES file length: ${file.lengthSync()}');
+  debugPrint('1- >>> AES file exists: ${file.existsSync()}');
+  if (file.existsSync()) {
+    debugPrint('2- >>> AES file length: ${file.lengthSync()}');
+  } else {
+    debugPrint('2- >>> AES file MISSING – will try asset or download');
+  }
+
+  final json = await EncryptedAssetLoader.decryptJson(); // ← appel avec classe
+  final list1 = jsonDecode(json) as List;
+  debugPrint('3- >>> TOTAL stations after decrypt = ${list1.length}');
+  // détail de la première (et unique) station
+  if (list.isNotEmpty) {
+    final s = list.first;
+    debugPrint('>>> station 0 name   = ${s['name']}');
+    debugPrint('>>> station 0 code   = ${s['code']}');
+    debugPrint('>>> station 0 code runtime type = ${s['code'].runtimeType}');
+  }
+  //*************************************
 
   runApp(MyApp());
 }
@@ -78,7 +109,7 @@ class _DebugWrapper extends StatelessWidget {
                 child: ElevatedButton(
                   onPressed: () async {
                     try {
-                      final json = await decryptJson();
+                      final json = await EncryptedAssetLoader.decryptJson(); // ← classe
                       final list = jsonDecode(json) as List;
                       debugPrint('>>> JSON OK – ${list.length} stations');
                     } catch (e, s) {
