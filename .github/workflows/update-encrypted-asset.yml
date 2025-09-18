@@ -12,20 +12,18 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.5'
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Generate encrypted asset
-        run: flutter run tool/encrypt_json.dart
-
+      - name: Verify AES file exists
+        run: |
+          if [ ! -f assets/lst_rdo.aes ]; then
+            echo "::error::lst_rdo.aes manquant – générez-le localement et push-le"
+            exit 1
+          fi
       - name: Commit & push if changed
         run: |
           git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add assets/lst_rdo.aes
+          git diff --cached --quiet || (git commit -m "chore: update encrypted asset" && git push)
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add assets/lst_rdo.aes
           git diff --cached --quiet || (git commit -m "chore: auto-update encrypted asset" && git push)
