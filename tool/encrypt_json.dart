@@ -6,7 +6,7 @@ import 'dart:convert';
 
 void main() {
   ///********** */
-  final plainFile = File('lst_rdo.json');
+  final plainFile = File('.github/workflows/lst_rdo.json');
   print('>>> Reading file | lst_rdo.json | : ${plainFile.absolute.path}');
   print('>>> File exists  | lst_rdo.json | : ${plainFile.existsSync()}');
   print('>>> File length  | lst_rdo.json | : ${plainFile.lengthSync()}');
